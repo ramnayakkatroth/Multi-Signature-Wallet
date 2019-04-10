@@ -1,127 +1,188 @@
-pragma solidity >=0.4.0 <0.6.0;
-// contract Creating for MultiSigniture Wallet 
+pragma solidity ^0.5.7;
 
-contract MultiSigWallet {
-// create a Proposals to send an amount ether to an address 
-//may be reject Proposals 
+// created a contract for MultiSignatureWallet 
+contract MultiSignatureWallet {
+// owner of address must be private because that is accessing only in contract Not Derived Contract
 
-// proposal can has to address and amount and mapping who are signed and finalized of proposals
- // proposal can finalized or not  that can True or false
-  struct Proposal {
-    address to;
-    uint amount;
-    mapping(address => bool) signed;
-    bool finalized;
-  }
-//ini
-  uint signersRequired;
-  //array of signers 
-  address[] public signers;
-  //proposal arrays
-  Proposal[] public proposals;
-  // map to check to some one sign or not 
-  mapping(address => bool) public canSign;
-// 
-//initialize the Contract With Signers 
-// the signers can submit Proposals
-// they can sign Proposals 
-// address array is initial signers 
+address private _owner;
 
-// first deploy the contract  with appropriate arguments like . ["0xca35b7d915458ef540ade6068dfe2f44e8fa733c", "0x14723a09acff6d2a60dcdf7aa4aff308fddc160c"],2 
-// this can transfer ethers to 2 signers required 
-  constructor(address[] initSigners, uint m) public {
-      // condition checking if submit a proposal can have more then 1 signer  condtion checking 
-    if(m == 0) {
-      signersRequired = initSigners.length;
-    } else {
-      signersRequired = m;
+// in solidity smart Contract mapping is defined as a hash table 
+// this can have key and corresponding value 
+
+
+mapping(address => uint256) private _owners;
+
+// this can be defining how many signers to sign the Transaction
+// while transfer amount or withdraw amount from wallet to account must be defined variable 
+// 2 Signers can Sign The Transaction
+uint constant MIN_SIGNATURES = 2;
+// this can be defined as transaction index finding and accessing Transactions
+uint private _transactionIdx;
+
+// this can be custom properties 
+// transaction can be one format to store  and defined
+// The structure can be from , to , how much amount , signatureCount , and timestamp, mapping to transactionId
+struct Transaction {
+address from;
+address to;
+uint amount;
+uint8 signatureCount;
+uint256 timestamp;
+mapping (address => uint8) signatures;
+}
+// in solidity smart Contract mapping is defined as a hash table 
+// this can have key and corresponding value 
+// this uint value can be mapping to Transaction structure
+mapping (uint => Transaction) private _transactions;
+// unsigned integer can defined it means getting the Pending Transaction while Transfering amount to another member and withdraw amount from wallet
+uint[] private _pendingTransactions;
+
+
+// modifier is used to make sure that the caller of a function is the owner of the contract.
+
+modifier isOwner() {
+    // check condition isOwner or not
+    require(msg.sender == _owner);
+    
+    //The symbol _; is used to continue executing the rest of function body
+    
+    _;
+}
+// modifier is used to make sure that the caller of a function is the ValidOwner of the contract.
+
+modifier validOwner() {
+    // this can be check conditions with require method]
+    
+    require(msg.sender == _owner || _owners[msg.sender] == 1);
+    //The symbol _; is used to continue executing the rest of function body
+    _;
+}
+// Events allow the convenient usage of the EVM logging facilities. 
+// Events are inheritable members of contracts. When they are called, 
+// they cause the arguments to be stored in the transaction's log. 
+ // All non-indexed arguments will be stored in the data part of the log.
+ // DepositFunds can be a transfer money
+event DepositFunds(address from, uint amount);
+// this event can be a TransactionCreated  in log
+event TransactionCreated(address from, address to, uint amount, uint transactionId);
+// this event can be a TransactionCompleted  in log
+event TransactionCompleted(address from, address to, uint amount, uint transactionId);
+// this event can be a TransactionSigned  in log
+event TransactionSigned(address by, uint transactionId);
+
+// constructor can be a assign owner address 
+constructor() public {
+    _owner = msg.sender;
+}
+// this function can be add the signers and  check the validOwner can addSigners or not  
+// when add a owner owners can be 1
+function addOwner(address owner) isOwner public { 
+    _owners[owner] = 1;
+}
+
+// this function can be delete  the signers and  check the validOwner can deleteSigners or not 
+// when add a owner owners can be 0
+function removeOwner(address owner) isOwner public {
+    _owners[owner] = 0;
+}
+// this is a external to every fallback or interface function that does not specify its visibility already
+// this can be deposit balance in wallet 
+function () external payable {
+    emit DepositFunds(msg.sender, msg.value);
+}
+// withdraw money can be a withdraw from wallet to account only
+// we are uses transferTo Function to add money in account
+// this function can be having to signing the Transaction
+function withdraw(uint amount) public {
+    transferTo(msg.sender, amount);
+}
+// this function can be transfer amoount to another person 
+// this can be check valid owner can transfer amount or not 
+function transferTo(address to, uint amount) validOwner public {
+    // this can be check the amoount the given amount is less than account balance or not 
+    require(address(this).balance >= amount);
+    // if it`s ok transactionId can be generated 
+    uint transactionId = _transactionIdx++;
+// the structure of Transaction can be stored in a manner
+Transaction memory transaction;
+    transaction.from = msg.sender;
+    transaction.to = to;
+    transaction.amount = amount;
+    transaction.signatureCount = 0;
+    transaction.timestamp=now;
+// adding the Blue print of structure Transaction to Transactions 
+// and push into _pendingTransactions because given max signer to sign the transaction then transfered the amount 
+    _transactions[transactionId] = transaction;
+    _pendingTransactions.push(transactionId);
+         // All calls directed at that function, including deeply nested
+        // are going to be detected by the JavaScript API via
+        // filtering for `TransactionCreated` to be called.
+        
+    emit TransactionCreated(msg.sender, to, amount, transactionId);
+}
+// getting the all the _pendingTransactions index
+// it will return the all the pendingTransactions
+// owner will not allow to sign the Transaction
+function getPendingTransactions() validOwner public view returns (uint[] memory) {
+    return _pendingTransactions;
+}
+
+// this funtion can be valid signers can sign the Transaction with pending transactionId
+function signTransaction(uint transactionId) validOwner public {
+    
+    Transaction storage transaction = _transactions[transactionId];
+
+// Transaction must exist
+require(address(0x0) != transaction.from);
+// Creator cannot sign the transaction
+require(msg.sender != transaction.from);
+// Cannot sign a transaction more than once
+require(transaction.signatures[msg.sender] != 1);
+// this can get signer count can  be increamented
+transaction.signatures[msg.sender] = 1;
+transaction.signatureCount++;
+
+// All calls directed at that function, including deeply nested
+// are going to be detected by the JavaScript API via
+// filtering for `TransactionSigned` to be called.
+//this function can be recorded
+emit TransactionSigned(msg.sender, transactionId);
+    // and check the  transaction.signatureCount is greaterthan equal to MIN_SIGNATURES or not 
+    // if yes the transaction of amoubt can be transfered to reciever account
+    if (transaction.signatureCount >= MIN_SIGNATURES) {
+        
+        require(address(this).balance >= transaction.amount);
+        address(uint168(transaction.to)).transfer(transaction.amount);
+        // All calls directed at that function, including deeply nested
+        // are going to be detected by the JavaScript API via
+        // filtering for `TransactionCompleted` to be called.
+        // transaction can be recorded
+        emit TransactionCompleted(transaction.from, transaction.to, transaction.amount, transactionId);
+        // and delete transaction from pending transaction
+        deleteTransaction(transactionId);
     }
-    //initial 
-    signers = initSigners;
-    // this can sign which address is can sign  that can be True 
-    for(uint i = 0; i < initSigners.length; i++) {
-      canSign[initSigners[i]] = true;
-    }
-  }
-// this is fall back function that payable ether 
-// send some Ethers from first account to another account 
-// EX. 50  and click fallback button (value in ethers or wei) etc 
-  function () public payable {
+}
+//all the owner can be deleteTransaction from pendingTransactions also with their transactionId 
 
-  }
-// this will returns the balance of 
-  function balance() public view returns(uint) {
-      // this can return all the balance msg.sender
+function deleteTransaction(uint transactionId) validOwner public {
+uint8 replace = 0;
+    for(uint i = 0; i < _pendingTransactions.length; i++) {
+        if (1 == replace) {
+            _pendingTransactions[i-1] = _pendingTransactions[i];
+        } 
+        else if (transactionId == _pendingTransactions[i]) {
+            replace = 1;
+        }
+}
+    delete _pendingTransactions[_pendingTransactions.length - 1];
+    _pendingTransactions.length--;
+    delete _transactions[transactionId];
+}
+//this function can be check the wallet balance 
+// this will return balance in wei
+//10000000000000000000 Wei=10 ether
+
+function walletBalance() view public returns (uint) {
     return address(this).balance;
-  }
-
-// precondition checking the isSigners is that can False Revert the proposal
-  modifier isSigner(address user) {
-      // this can check all the signer is signed or not 
-    require(canSign[user] == true);
-    _;
-  }
-  
-  
-  // this can be push proposals to Proposal Structure  Who is signers can address can be get with msg.sender
-  // Ex. 500000000000000000,"0xca35b7d915458ef540ade6068dfe2f44e8fa733c" through Submit The proposal 
-  //that can pushing in the proposals array
-  
-  function submitProposal(uint amount, address to)  isSigner(msg.sender) public {
-      // this can push required  all the proposals 
-    proposals.push(Proposal({
-      to: to,
-      amount: amount,
-      finalized: false
-    }));
-  }
-// Checking the proposalExists or not checking the precondition
-
-  modifier proposalExists(uint index) {
-    require(index >= 0);
-    require(index < proposals.length);
-    _;
-  }
-  // before sign with index 0 or other indexes this function can execute first proposalExists,isSigner this two modifiers can be Check signer Can sign or not  and that index proposal Exist Or not 
-  // if signer not exist signer can sign the proposal  can be True 
-  // Sign With indexEx.  0 index
-  function sign(uint proposalIndex)  isSigner(msg.sender) proposalExists(proposalIndex) public {
-      // if click sign ti proposal is signed 
-    proposals[proposalIndex].signed[msg.sender] = true;
-  }
-// this function is finalize to tell us the count all of them are signed or not  
-  function signerRequirementsMet(uint index) proposalExists(index) public view returns(bool) {
-    uint signedCount = 0;
-    // sign signerRequirementsMet is equal or not  aall signers of array proposals 
-    for(uint i = 0; i < signers.length; i++) {
-      if(proposals[index].signed[signers[i]]){
-          // if signer can sign that can be increase signer count 
-        signedCount++;
-      }
-    }
-    // it will return the if the condition is  true setting the bool value is True  or false 
-    return signedCount >= signersRequired;
-  }
-// this modifier can check the all signers are signed  or not 
-  modifier isFullySigned(uint index) {
-      // checking the signerRequirementsMet with index
-    require(signerRequirementsMet(index));
-    _;
-  }
-// this is finalize the proposal can execute first isFullySigned modifier to check all the signer can sign or not 
-//check the amount of this address balance is greater than proposals amount 
-//if this is true the finalizeProposal can transfer the amount 
-// add finalization to send Ethers 
-// And finalized with index of reciever 
-  function finalizeProposal(uint index) isFullySigned(index) isSigner(msg.sender) public  {
-    require(address(this).balance >= proposals[index].amount);
-    //if proposals of index is not finalized 
-    require(proposals[index].finalized == false);
-    // that can be finalized 
-    proposals[index].finalized = true;
-    // and transfer amount with Ethers
-    proposals[index].to.transfer(proposals[index].amount);
-  }
-
-
+}
 }
