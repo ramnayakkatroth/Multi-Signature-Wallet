@@ -22,6 +22,7 @@
       Transfer The money to reciever.
 # Step-6 :
       Check The Pending Transactions
+# Step-7 :
 
       
       
